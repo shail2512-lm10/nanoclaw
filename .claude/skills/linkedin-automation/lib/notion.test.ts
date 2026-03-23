@@ -329,6 +329,64 @@ describe('Notion API error handling', () => {
   });
 });
 
+// ── getDataSourceId probe mechanism ───────────────────────────────────────
+
+describe('getDataSourceId probe mechanism', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('trashes the probe page even when pages.retrieve throws', async () => {
+    // Regression: ISSUE-001 — probe page leaks when pages.retrieve fails
+    // Found by /qa on 2026-03-23
+    const freshClient = {
+      dataSources: { query: vi.fn().mockResolvedValue({ results: [] }) },
+      pages: {
+        create:   vi.fn().mockResolvedValue({ id: 'probe-123' }),
+        update:   vi.fn().mockResolvedValue({}),
+        retrieve: vi.fn().mockRejectedValue(new Error('retrieve timed out')),
+      },
+    };
+    vi.doMock('@notionhq/client', () => ({ Client: vi.fn(function () { return freshClient; }) }));
+    vi.doMock('./config.js', () => ({
+      config: { notion: { apiKey: 'test-key', leadsDatabaseId: 'test-db-id' } },
+    }));
+
+    const { upsertLead: freshUpsert } = await import('./notion.js');
+
+    await expect(freshUpsert({ name: 'Test', profileUrl: TEST_URL })).rejects.toThrow('retrieve timed out');
+
+    // Probe page must always be trashed — even when retrieve fails
+    expect(freshClient.pages.update).toHaveBeenCalledWith(
+      expect.objectContaining({ page_id: 'probe-123', in_trash: true }),
+    );
+  });
+
+  it('caches the data_source_id after the probe succeeds — probe runs once only', async () => {
+    const freshClient = {
+      dataSources: { query: vi.fn().mockResolvedValue({ results: [] }) },
+      pages: {
+        create:   vi.fn().mockResolvedValue({ id: 'probe-456' }),
+        update:   vi.fn().mockResolvedValue({}),
+        retrieve: vi.fn().mockResolvedValue({ parent: { data_source_id: 'ds-999' } }),
+      },
+    };
+    vi.doMock('@notionhq/client', () => ({ Client: vi.fn(function () { return freshClient; }) }));
+    vi.doMock('./config.js', () => ({
+      config: { notion: { apiKey: 'test-key', leadsDatabaseId: 'test-db-id' } },
+    }));
+
+    const { upsertLead: freshUpsert } = await import('./notion.js');
+
+    // Two calls — only the first should trigger the probe
+    await freshUpsert({ name: 'Test', profileUrl: TEST_URL });
+    await freshUpsert({ name: 'Test2', profileUrl: TEST_URL + '2' });
+
+    // pages.retrieve is the probe mechanism — must be called exactly once
+    expect(freshClient.pages.retrieve).toHaveBeenCalledTimes(1);
+  });
+});
+
 // ── Configuration errors (require fresh module instances) ─────────────────
 
 describe('configuration errors', () => {

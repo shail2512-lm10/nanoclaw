@@ -71,14 +71,17 @@ async function getDataSourceId(): Promise<string> {
     } as Parameters<typeof notion.pages.create>[0]['properties'],
   });
 
-  const retrieved = await notion.pages.retrieve({ page_id: probe.id });
-  const parent = (retrieved as unknown as { parent: { data_source_id?: string; database_id?: string } }).parent;
-  const dsId = parent.data_source_id ?? parent.database_id ?? dbId;
+  let dsId: string;
+  try {
+    const retrieved = await notion.pages.retrieve({ page_id: probe.id });
+    const parent = (retrieved as unknown as { parent: { data_source_id?: string; database_id?: string } }).parent;
+    dsId = parent.data_source_id ?? parent.database_id ?? dbId;
+  } finally {
+    await notion.pages.update({ page_id: probe.id, in_trash: true } as Parameters<typeof notion.pages.update>[0]);
+  }
 
-  await notion.pages.update({ page_id: probe.id, in_trash: true } as Parameters<typeof notion.pages.update>[0]);
-
-  _dataSourceId = dsId;
-  return dsId;
+  _dataSourceId = dsId!;
+  return dsId!;
 }
 
 // ─── Find lead by profile URL ──────────────────────────────────────────────────
