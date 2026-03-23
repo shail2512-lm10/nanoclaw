@@ -219,3 +219,8 @@ export async function getCampaignStats(campaign?: string): Promise<Record<LeadSt
 
   return stats;
 }
+
+/** For testing only — pre-seeds the data source ID cache to bypass the probe */
+export function _setDataSourceId(id: string): void {
+  _dataSourceId = id;
+}

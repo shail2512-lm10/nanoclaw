@@ -72,6 +72,7 @@ function makeMockPage(selectorHits: Record<string, number> = {}) {
     goto: vi.fn().mockResolvedValue(undefined),
     waitForTimeout: vi.fn().mockResolvedValue(undefined),
     waitForSelector: vi.fn().mockResolvedValue(null),
+    evaluate: vi.fn().mockResolvedValue(undefined),
     locator: vi.fn().mockImplementation((sel: string) => {
       const count = selectorHits[sel] ?? 0;
       const elements = Array.from({ length: count }, makeResultEl);

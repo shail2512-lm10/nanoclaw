@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockNotion = vi.hoisted(() => ({
   dataSources: { query: vi.fn() },
-  pages: { create: vi.fn(), update: vi.fn() },
+  pages: { create: vi.fn(), update: vi.fn(), retrieve: vi.fn() },
 }));
 
 vi.mock('@notionhq/client', () => ({
@@ -21,7 +21,7 @@ vi.mock('./config.js', () => ({
   },
 }));
 
-import { upsertLead, updateLeadStatus, getLeadsByStatus, getCampaignStats } from './notion.js';
+import { upsertLead, updateLeadStatus, getLeadsByStatus, getCampaignStats, _setDataSourceId } from './notion.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -53,9 +53,12 @@ const TEST_URL = 'https://www.linkedin.com/in/testuser';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Pre-seed the data source ID cache to bypass the probe page mechanism
+  _setDataSourceId('test-db-id');
   mockNotion.dataSources.query.mockResolvedValue({ results: [] });
   mockNotion.pages.create.mockResolvedValue({ id: 'new-page-id' });
   mockNotion.pages.update.mockResolvedValue({ id: 'upd-page-id' });
+  mockNotion.pages.retrieve.mockResolvedValue({ parent: { database_id: 'test-db-id' } });
 });
 
 // ── upsertLead ─────────────────────────────────────────────────────────────
