@@ -296,6 +296,42 @@ launchctl kickstart -k gui/$(id -u)/com.nanoclaw
 systemctl --user restart nanoclaw
 ```
 
+### Step 7 — Verify with unit tests
+
+Run the full test suite. All tests must pass before the skill is considered set up:
+
+```bash
+npm test
+```
+
+Expected: all tests pass (including `send-connection.test.ts`, `send-message.test.ts`, `scrape-search.test.ts`, `notion.test.ts`).
+
+### Step 8 — Verify with live tests
+
+Run the live integration test to confirm real Notion and LinkedIn connectivity:
+
+```bash
+cd /path/to/nanoclaw
+npx dotenv -e .env -- npx tsx .claude/skills/linkedin-automation/live-test.ts
+```
+
+This runs four tiers automatically:
+- **Tier 1** — Notion CRUD (direct API calls, no browser)
+- **Tier 2** — LinkedIn scripts against Notion (no browser)
+- **Tier 3** — Read-only LinkedIn browser scraping
+- **Tier 4** — Interactive button verification (prompts for a profile URL)
+
+Tier 4 verifies the exact selectors that are most likely to break when LinkedIn updates its UI (connect button visibility, modal flow, message button). You will be asked to provide a LinkedIn profile URL and confirm each action before it runs.
+
+To skip Tier 4 prompts (scripted re-runs):
+```bash
+LIVE_TEST_PROFILE=https://www.linkedin.com/in/<not-yet-connected> \
+LIVE_TEST_CONNECTED_PROFILE=https://www.linkedin.com/in/<1st-degree-connection> \
+npx dotenv -e .env -- npx tsx .claude/skills/linkedin-automation/live-test.ts
+```
+
+Tiers 1–2 must fully pass. Tier 3 requires a working LinkedIn session. Tier 4 is optional but strongly recommended after any LinkedIn UI change or selector update.
+
 ---
 
 ## Integration Points
@@ -433,25 +469,30 @@ getTodayCounts(): Promise<DailyCounts>
 
 ## Key Selectors (LinkedIn UI)
 
-LinkedIn updates their UI frequently. Current working selectors:
+LinkedIn updates their UI frequently. Current working selectors (as of 2026-03):
 
-| Element | Selector |
-|---------|----------|
-| Connect button | `button[aria-label*="Connect"]` |
-| Follow button | `button[aria-label*="Follow"]` |
-| Message button | `button[aria-label*="Message"]` |
-| Send note field | `textarea[name="message"]` |
-| Send connection confirm | `button[aria-label="Send now"]` |
-| Message compose | `div.msg-form__contenteditable` |
-| Message send | `button.msg-form__send-button` |
-| Like button | `button[aria-label*="Like"]` |
-| Reaction menu | `div.reactions-menu` |
-| Comment box | `div.comments-comment-box__form` |
-| Profile name | `h1.text-heading-xlarge` |
-| Profile title | `div.text-body-medium` |
-| Profile company | `span[aria-hidden="true"]` (experience section) |
-| Search results | `li.reusable-search__result-container` |
-| Post engagers list | `div.social-details-reactors-tab-body-list` |
+| Element | Selector | Notes |
+|---------|----------|-------|
+| Connect button | `button[aria-label*="connect" i]` | **Case-insensitive** — LinkedIn now uses "Invite X to connect" (lowercase c). Always append `:visible` in code to skip hidden DOM duplicates. |
+| Follow button | `button[aria-label*="Follow"]:visible` | Append `:visible` — LinkedIn renders hidden duplicates of all profile-card buttons |
+| Unfollow button | `button[aria-label*="Unfollow"]:visible, button[aria-label*="Following"]:visible` | Same hidden-duplicate issue |
+| Message button | `button[aria-label*="Message"]:visible` | Append `:visible` — hidden duplicate exists |
+| Pending/Withdraw | `button[aria-label*="Pending"]:visible, button[aria-label*="Withdraw"]:visible` | Append `:visible` |
+| Add note (modal) | `button[aria-label="Add a note"]` | Appears in connect modal after clicking connect |
+| Send note field | `textarea[name="message"]` | Inside connect modal |
+| Send with note | `button[aria-label="Send invitation"]` | **Only appears after clicking "Add a note"** — not present in the no-note flow |
+| Send without note | `button[aria-label="Send without a note"]` | Always present in connect modal; use this for no-note path |
+| Message compose | `div.msg-form__contenteditable` | |
+| Message send | `button.msg-form__send-button` | |
+| Like button | `button[aria-label*="Like"][aria-pressed="false"]` | |
+| Reaction menu | `div.reactions-menu` | |
+| Comment box | `div.comments-comment-box__form div[contenteditable]` | |
+| Profile name | `h1` | |
+| Profile title | `div.text-body-medium` | |
+| Search results | `[data-chameleon-result-urn]` | Primary selector; fallbacks in `scrape-search.ts` |
+| Post engagers list | `div.social-details-reactors-tab-body-list` | |
+
+> **Critical:** LinkedIn renders hidden DOM duplicates of profile-card action buttons. Always use `:visible` in Playwright locators (e.g. `page.locator('button[aria-label*="connect" i]:visible')`). Without `:visible`, `.first()` picks a hidden element, `isVisible()` returns false, and the script silently reports "button not found". The unit tests in `send-connection.test.ts` and `send-message.test.ts` specifically guard against this regression.
 
 ---
 
@@ -505,9 +546,16 @@ n.databases.retrieve({ database_id: process.env.NOTION_LEADS_DB_ID })
 
 ### Selectors broken after LinkedIn UI update
 
-1. Open Chrome with your profile: `npx dotenv -e .env -- npx tsx .claude/skills/linkedin-automation/scripts/setup.ts`
-2. Open DevTools → Inspector to find the new selector
-3. Update `lib/browser.ts` SELECTORS constant
+1. Run unit tests first — they verify selector contract without touching LinkedIn:
+   ```bash
+   npm test
+   ```
+2. Run live tests to confirm end-to-end (Tier 4 specifically exercises each button selector):
+   ```bash
+   npx dotenv -e .env -- npx tsx .claude/skills/linkedin-automation/live-test.ts
+   ```
+3. If a selector is broken, open DevTools on a live profile to find the new one, then update `lib/config.ts` (the `selectors` object). All scripts import selectors from config — one change fixes everything.
+4. Re-run `npm test` after updating — the unit tests in `send-connection.test.ts` and `send-message.test.ts` will catch common regressions (missing `:visible`, wrong modal button, case-sensitive matching).
 
 ---
 
