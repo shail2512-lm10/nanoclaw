@@ -48,7 +48,7 @@ runScript<{ messageText: string; campaign?: string; maxMessages?: number }>(
         const { page, success, error } = await navigateToProfile(context, lead.profileUrl);
         if (!success) { errors++; console.error(`Navigate failed for ${lead.name}: ${error}`); continue; }
 
-        const msgBtn = page.locator(config.selectors.messageBtn).first();
+        const msgBtn = page.locator(`${config.selectors.messageBtn}:visible`).first();
         if (!await msgBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
           skipped++;
           console.error(`No message button for ${lead.name}`);

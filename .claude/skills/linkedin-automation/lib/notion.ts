@@ -108,9 +108,16 @@ export async function upsertLead(lead: LinkedInLead): Promise<void> {
   const existingId = await findLeadByUrl(normalizedUrl);
 
   const props: Record<string, unknown> = {
-    'Name':        { title: [{ text: { content: lead.name || 'Unknown' } }] },
     'Profile URL': { url: normalizedUrl },
   };
+
+  // On create: always set Name (required field). On update: only overwrite if non-empty,
+  // so a failed selector extraction doesn't clobber the existing name.
+  if (lead.name) {
+    props['Name'] = { title: [{ text: { content: lead.name } }] };
+  } else if (!existingId) {
+    props['Name'] = { title: [{ text: { content: 'Unknown' } }] };
+  }
 
   if (lead.title)       props['Title']       = { rich_text: [{ text: { content: lead.title } }] };
   if (lead.company)     props['Company']     = { rich_text: [{ text: { content: lead.company } }] };

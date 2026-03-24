@@ -16,7 +16,7 @@ runScript<{ profileUrl: string }>(async ({ profileUrl }) => {
     const { page, success, error } = await navigateToProfile(context, profileUrl);
     if (!success) return { success: false, message: error || 'Navigation failed' };
 
-    const pendingBtn = page.locator(config.selectors.pendingBtn).first();
+    const pendingBtn = page.locator(`${config.selectors.pendingBtn}:visible`).first();
     const isVisible = await pendingBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!isVisible) {
       return { success: false, message: 'No pending request found for this profile.' };

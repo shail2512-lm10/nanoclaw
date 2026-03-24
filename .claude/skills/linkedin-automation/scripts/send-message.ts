@@ -26,7 +26,7 @@ runScript<{ profileUrl: string; message: string }>(async ({ profileUrl, message 
     const { page, success, error } = await navigateToProfile(context, profileUrl);
     if (!success) return { success: false, message: error || 'Navigation failed' };
 
-    const msgBtn = page.locator(config.selectors.messageBtn).first();
+    const msgBtn = page.locator(`${config.selectors.messageBtn}:visible`).first();
     const isVisible = await msgBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!isVisible) {
       return { success: false, message: 'Message button not found. Only 1st-degree connections can be messaged.' };

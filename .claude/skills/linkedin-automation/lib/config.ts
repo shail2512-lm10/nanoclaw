@@ -64,12 +64,12 @@ export const config = {
   // LinkedIn selectors (update if LinkedIn redesigns their UI)
   selectors: {
     // Profile page
-    connectBtn:        'button[aria-label*="Connect"]',
+    connectBtn:        'button[aria-label*="connect" i]',
     followBtn:         'button[aria-label*="Follow"]',
     unfollowBtn:       'button[aria-label*="Unfollow"], button[aria-label*="Following"]',
     messageBtn:        'button[aria-label*="Message"]',
     pendingBtn:        'button[aria-label*="Pending"], button[aria-label*="Withdraw"]',
-    profileName:       'h1.text-heading-xlarge',
+    profileName:       'h1',
     profileHeadline:   'div.text-body-medium',
     profileLocation:   'span.text-body-small.inline.t-black--light',
     profileAbout:      'div#about ~ div .full-width span[aria-hidden="true"]',
@@ -79,7 +79,7 @@ export const config = {
     // Connect modal
     addNoteBtn:        'button[aria-label="Add a note"]',
     noteTextarea:      'textarea[name="message"]',
-    sendNowBtn:        'button[aria-label="Send now"]',
+    sendNowBtn:        'button[aria-label="Send invitation"]',
     sendWithoutNoteBtn:'button[aria-label="Send without a note"]',
 
     // Messaging

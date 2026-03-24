@@ -23,15 +23,15 @@ runScript<{ profileUrl: string }>(async ({ profileUrl }) => {
     const { page, success, error } = await navigateToProfile(context, profileUrl);
     if (!success) return { success: false, message: error || 'Navigation failed' };
 
-    const followBtn = page.locator(config.selectors.followBtn).first();
+    const followBtn = page.locator(`${config.selectors.followBtn}:visible`).first();
     const isVisible = await followBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!isVisible) {
       // Try "More" menu
-      const moreBtn = page.locator('button[aria-label*="More actions"]').first();
+      const moreBtn = page.locator('button:visible[aria-label*="More actions"]').first();
       if (await moreBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
         await moreBtn.click();
         await page.waitForTimeout(config.delays.afterClick);
-        const menuFollow = page.locator('div[aria-label*="Follow"]').first();
+        const menuFollow = page.locator('div[aria-label*="follow" i]').first();
         if (await menuFollow.isVisible({ timeout: 3000 }).catch(() => false)) {
           await menuFollow.click();
         } else {

@@ -70,7 +70,7 @@ runScript<{
         const { page, success, error } = await navigateToProfile(context, lead.profileUrl);
         if (!success) { errors++; console.error(`Navigate for connect failed: ${error}`); continue; }
 
-        const connectBtn = page.locator(config.selectors.connectBtn).first();
+        const connectBtn = page.locator(`${config.selectors.connectBtn}:visible`).first();
         const visible = await connectBtn.isVisible({ timeout: 5000 }).catch(() => false);
         if (!visible) { skipped++; console.error(`No connect button for ${lead.name}`); continue; }
 
@@ -85,15 +85,13 @@ runScript<{
             await page.waitForTimeout(config.delays.afterClick);
             await page.fill(config.selectors.noteTextarea, note);
             await page.waitForTimeout(config.delays.afterType);
-          }
-          await page.locator(config.selectors.sendNowBtn).first().click();
-        } else {
-          const withoutNote = page.locator(config.selectors.sendWithoutNoteBtn).first();
-          if (await withoutNote.isVisible({ timeout: 3000 }).catch(() => false)) {
-            await withoutNote.click();
-          } else {
+            // "Send invitation" only appears after clicking "Add a note"
             await page.locator(config.selectors.sendNowBtn).first().click();
+          } else {
+            await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
           }
+        } else {
+          await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
         }
 
         await page.waitForTimeout(config.delays.afterClick * 2);
@@ -114,7 +112,7 @@ runScript<{
         const { page, success, error } = await navigateToProfile(context, lead.profileUrl);
         if (!success) { errors++; console.error(`Navigate for message failed: ${error}`); continue; }
 
-        const msgBtn = page.locator(config.selectors.messageBtn).first();
+        const msgBtn = page.locator(`${config.selectors.messageBtn}:visible`).first();
         if (!await msgBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
           skipped++; console.error(`No message button for ${lead.name} — not connected?`); continue;
         }

@@ -115,6 +115,27 @@ describe('upsertLead', () => {
     expect(props['Campaign']).toMatchObject({ rich_text: [{ text: { content: 'Q1' } }] });
   });
 
+  it('does NOT overwrite Name when updating an existing lead with empty name', async () => {
+    // Regression: scrape-profile selector failure returned '' → overwrote existing name with 'Unknown'
+    mockNotion.dataSources.query.mockResolvedValue({
+      results: [makePage('page-123', TEST_URL, { name: 'Alice' })],
+    });
+    await upsertLead({ name: '', profileUrl: TEST_URL });
+    const props = (mockNotion.pages.update.mock.calls[0][0] as {
+      properties: Record<string, unknown>;
+    }).properties;
+    expect(props['Name']).toBeUndefined();
+  });
+
+  it('sets Name to "Unknown" on CREATE when name is empty', async () => {
+    // New record must still have a Name
+    await upsertLead({ name: '', profileUrl: TEST_URL });
+    const props = (mockNotion.pages.create.mock.calls[0][0] as {
+      properties: Record<string, unknown>;
+    }).properties;
+    expect(props['Name']).toMatchObject({ title: [{ text: { content: 'Unknown' } }] });
+  });
+
   it('truncates About field to 2000 characters', async () => {
     const longAbout = 'x'.repeat(3000);
     await upsertLead({ name: 'Bob', profileUrl: TEST_URL, about: longAbout });

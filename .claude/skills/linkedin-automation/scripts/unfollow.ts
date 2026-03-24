@@ -15,7 +15,7 @@ runScript<{ profileUrl: string }>(async ({ profileUrl }) => {
     const { page, success, error } = await navigateToProfile(context, profileUrl);
     if (!success) return { success: false, message: error || 'Navigation failed' };
 
-    const unfollowBtn = page.locator(config.selectors.unfollowBtn).first();
+    const unfollowBtn = page.locator(`${config.selectors.unfollowBtn}:visible`).first();
     const isVisible = await unfollowBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!isVisible) {
       return { success: false, message: 'Unfollow button not found. May not be following this person.' };

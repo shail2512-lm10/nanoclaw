@@ -24,17 +24,17 @@ runScript<{ profileUrl: string; note?: string }>(async ({ profileUrl, note }) =>
     const { page, success, error } = await navigateToProfile(context, profileUrl);
     if (!success) return { success: false, message: error || 'Navigation failed' };
 
-    // Click Connect button
-    const connectBtn = page.locator(config.selectors.connectBtn).first();
+    // Click Connect button — use :visible to skip hidden DOM duplicates
+    const connectBtn = page.locator(`${config.selectors.connectBtn}:visible`).first();
     const isVisible = await connectBtn.isVisible({ timeout: 5000 }).catch(() => false);
 
     if (!isVisible) {
       // May be inside the "More" menu
-      const moreBtn = page.locator('button[aria-label*="More actions"]').first();
+      const moreBtn = page.locator('button:visible[aria-label*="More actions"]').first();
       if (await moreBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
         await moreBtn.click();
         await page.waitForTimeout(config.delays.afterClick);
-        const menuConnect = page.locator('div[aria-label*="Connect"]').first();
+        const menuConnect = page.locator('div[aria-label*="connect" i]').first();
         if (await menuConnect.isVisible({ timeout: 3000 }).catch(() => false)) {
           await menuConnect.click();
         } else {
@@ -57,17 +57,14 @@ runScript<{ profileUrl: string; note?: string }>(async ({ profileUrl, note }) =>
         await page.waitForTimeout(config.delays.afterClick);
         await page.fill(config.selectors.noteTextarea, note.trim().slice(0, 300));
         await page.waitForTimeout(config.delays.afterType);
-      }
-      const sendBtn = page.locator(config.selectors.sendNowBtn).first();
-      await sendBtn.click();
-    } else {
-      const sendWithoutNote = page.locator(config.selectors.sendWithoutNoteBtn).first();
-      if (await sendWithoutNote.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await sendWithoutNote.click();
+        // "Send invitation" only appears after clicking "Add a note"
+        await page.locator(config.selectors.sendNowBtn).first().click();
       } else {
-        const sendBtn = page.locator(config.selectors.sendNowBtn).first();
-        await sendBtn.click();
+        // "Add a note" unavailable — send without note
+        await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
       }
+    } else {
+      await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
     }
 
     await page.waitForTimeout(config.delays.afterClick * 2);

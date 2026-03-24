@@ -197,11 +197,25 @@ export async function extractProfileData(page: Page, profileUrl: string): Promis
     about = await page.locator('#about ~ div .full-width span[aria-hidden="true"]').first().textContent() ?? '';
   } catch {}
 
-  // Current company from experience
+  // Current company — try experience section selectors, then fall back to headline parsing
   let company = '';
-  try {
-    company = await page.locator('section#experience li:first-child .t-14.t-normal span[aria-hidden="true"]').first().textContent() ?? '';
-  } catch {}
+  const companySelectors = [
+    'section#experience li:first-child .t-14.t-normal span[aria-hidden="true"]',
+    '#experience ~ div li:first-child span[aria-hidden="true"]:nth-of-type(2)',
+    '#experience ~ div li:first-child span[aria-hidden="true"]:nth-child(2)',
+    'section#experience li:first-child span[aria-hidden="true"]:nth-of-type(2)',
+  ];
+  for (const sel of companySelectors) {
+    try {
+      const text = await page.locator(sel).first().textContent({ timeout: 2000 }) ?? '';
+      if (text.trim()) { company = text.trim().split('·')[0].trim(); break; }
+    } catch {}
+  }
+  // Fallback: parse "Title @ Company" from headline (handles class-randomisation)
+  if (!company && headline) {
+    const m = headline.match(/@\s*([^|·\n]+)/);
+    if (m) company = m[1].trim();
+  }
 
   // Email (if publicly visible on contact info)
   let email = '';
