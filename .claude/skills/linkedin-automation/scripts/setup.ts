@@ -41,7 +41,7 @@ async function setup() {
   if (email && password) {
     console.log(`→ Auto-filling credentials for ${email}...`);
     try {
-      await page.waitForSelector(config.selectors.emailInput, { timeout: 5000 });
+      await page.waitForSelector(config.selectors.emailInput, { timeout: config.timeouts.elementWait });
       await page.fill(config.selectors.emailInput, email);
       await page.fill(config.selectors.passwordInput, password);
       await page.waitForTimeout(1000);

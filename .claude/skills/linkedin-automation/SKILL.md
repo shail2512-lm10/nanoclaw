@@ -473,15 +473,15 @@ LinkedIn updates their UI frequently. Current working selectors (as of 2026-03):
 
 | Element | Selector | Notes |
 |---------|----------|-------|
-| Connect button | `button[aria-label*="connect" i]` | **Case-insensitive** — LinkedIn now uses "Invite X to connect" (lowercase c). Always append `:visible` in code to skip hidden DOM duplicates. |
-| Follow button | `button[aria-label*="Follow"]:visible` | Append `:visible` — LinkedIn renders hidden duplicates of all profile-card buttons |
-| Unfollow button | `button[aria-label*="Unfollow"]:visible, button[aria-label*="Following"]:visible` | Same hidden-duplicate issue |
-| Message button | `button[aria-label*="Message"]:visible` | Append `:visible` — hidden duplicate exists |
-| Pending/Withdraw | `button[aria-label*="Pending"]:visible, button[aria-label*="Withdraw"]:visible` | Append `:visible` |
-| Add note (modal) | `button[aria-label="Add a note"]` | Appears in connect modal after clicking connect |
-| Send note field | `textarea[name="message"]` | Inside connect modal |
+| Connect button | `:is(button, a)[aria-label*="connect" i]` | **Matches both `<button>` and `<a>`** (LinkedIn A/B test). Case-insensitive. Always append `:visible`. |
+| Follow button | `:is(button, a)[aria-label*="Follow"]` | Append `:visible` — LinkedIn renders hidden duplicates of all profile-card buttons |
+| Unfollow button | `:is(button, a)[aria-label*="Unfollow"], :is(button, a)[aria-label*="Following"]` | Same hidden-duplicate issue |
+| Message button | `:is(button[aria-label*="Message"], a[href*="messaging/compose"])` | **Matches both `<button>` and `<a>`**. Append `:visible`. |
+| Pending/Withdraw | `:is(button, a)[aria-label*="Pending"], :is(button, a)[aria-label*="Withdraw"]` | Append `:visible` |
+| Add note (modal) | `button[aria-label="Add a note"]` | Appears in connect modal and custom-invite page |
+| Send note field | `textarea[name="message"]` | Inside connect modal. **Not present on custom-invite page** until "Add a note" is clicked. |
 | Send with note | `button[aria-label="Send invitation"]` | **Only appears after clicking "Add a note"** — not present in the no-note flow |
-| Send without note | `button[aria-label="Send without a note"]` | Always present in connect modal; use this for no-note path |
+| Send without note | `button[aria-label="Send without a note"]` | Always present in connect modal and custom-invite page; use this for no-note path |
 | Message compose | `div.msg-form__contenteditable` | |
 | Message send | `button.msg-form__send-button` | |
 | Like button | `button[aria-label*="Like"][aria-pressed="false"]` | |
@@ -492,7 +492,24 @@ LinkedIn updates their UI frequently. Current working selectors (as of 2026-03):
 | Search results | `[data-chameleon-result-urn]` | Primary selector; fallbacks in `scrape-search.ts` |
 | Post engagers list | `div.social-details-reactors-tab-body-list` | |
 
-> **Critical:** LinkedIn renders hidden DOM duplicates of profile-card action buttons. Always use `:visible` in Playwright locators (e.g. `page.locator('button[aria-label*="connect" i]:visible')`). Without `:visible`, `.first()` picks a hidden element, `isVisible()` returns false, and the script silently reports "button not found". The unit tests in `send-connection.test.ts` and `send-message.test.ts` specifically guard against this regression.
+> **Critical: Hidden DOM duplicates.** LinkedIn renders hidden DOM duplicates of profile-card action buttons. Always use `:visible` in Playwright locators (e.g. `page.locator('button[aria-label*="connect" i]:visible')`). Without `:visible`, `.first()` picks a hidden element, `isVisible()` returns false, and the script silently reports "button not found". The unit tests in `send-connection.test.ts` and `send-message.test.ts` specifically guard against this regression.
+
+> **Critical: SVG overlay on `<a>` action buttons (2026-03).** LinkedIn A/B tests profile-card action buttons — some profiles render Connect as `<a href="/preload/custom-invite/...">` and Message as `<a href="/messaging/compose/...">` instead of `<button>`. These `<a>` elements have a floating SVG overlay `<div class="_15abd600">` that intercepts all pointer events, making Playwright `.click()` (even with `force: true`) ineffective. **Workaround:** Detect the `<a>` tag via `el.evaluate(el => el.tagName)`, extract the `href`, and navigate directly with `page.goto()`. `dispatchEvent(new MouseEvent(...))` does NOT work — LinkedIn's JS ignores untrusted events (`isTrusted: false`). See `send-connection.ts` and `send-message.ts` for the implementation.
+
+> **Note: Premium paywall for custom invite notes.** Free LinkedIn accounts have a monthly limit on personalized connection notes. When exhausted, clicking "Add a note" on the `/preload/custom-invite/` page shows a Premium upsell dialog instead of a textarea. Dismissing the dialog destroys the entire invite UI (all buttons gone). Recovery: dismiss → re-navigate to the custom-invite URL → click "Send without a note". See `handleCustomInvitePage()` in `send-connection.ts`.
+
+> **Note: Other LinkedIn Premium paywalls.**
+> - **InMail (messaging non-connections):** Clicking "Message" on a 2nd/3rd-degree profile opens an InMail compose that requires Premium credits. Our scripts only message 1st-degree connections (they check for the visible Message button, which is hidden for non-connections), so this is naturally avoided.
+> - **Profile view limits:** Free accounts can see a limited number of profiles before LinkedIn gates access with a Premium upsell. The `maxProfileViewsPerDay` limit (default 80) keeps well under LinkedIn's threshold.
+> - **Endorsement limits:** LinkedIn occasionally restricts rapid endorsements, but does not gate them behind Premium. No paywall handling needed.
+> - **Post interactions (like, comment, share, react):** Not paywalled. No Premium handling needed.
+
+> **Note: Timeout strategy.** All scripts use centralized timeouts from `config.timeouts`:
+> - `elementWait` (8000ms) — primary action buttons (Connect, Message, Follow, Like, etc.)
+> - `secondaryWait` (5000ms) — fallback menus (More actions), confirm dialogs, optional elements
+> - `navigation` (30000ms) — page loads via `page.goto()`
+>
+> No hardcoded timeout values in scripts. Adjust via config or environment variables if LinkedIn is slow on your network.
 
 ---
 

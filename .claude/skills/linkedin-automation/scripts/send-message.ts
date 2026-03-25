@@ -27,13 +27,23 @@ runScript<{ profileUrl: string; message: string }>(async ({ profileUrl, message 
     if (!success) return { success: false, message: error || 'Navigation failed' };
 
     const msgBtn = page.locator(`${config.selectors.messageBtn}:visible`).first();
-    const isVisible = await msgBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    const isVisible = await msgBtn.isVisible({ timeout: config.timeouts.elementWait }).catch(() => false);
     if (!isVisible) {
       return { success: false, message: 'Message button not found. Only 1st-degree connections can be messaged.' };
     }
 
-    await msgBtn.click();
-    await page.waitForTimeout(config.delays.afterClick * 2);
+    // LinkedIn A/B: some profiles render Message as <a href="/messaging/compose/...">
+    // with an SVG overlay blocking Playwright clicks. Navigate directly when href exists.
+    const tagName = await msgBtn.evaluate(el => el.tagName.toLowerCase());
+    const href = tagName === 'a' ? await msgBtn.getAttribute('href') : null;
+
+    if (href && href.includes('/messaging/compose')) {
+      await page.goto(new URL(href, page.url()).toString(), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(config.delays.afterPageLoad);
+    } else {
+      await msgBtn.click();
+      await page.waitForTimeout(config.delays.afterClick * 2);
+    }
 
     // Type message in the compose box
     const compose = page.locator(config.selectors.msgCompose).first();

@@ -18,7 +18,7 @@ runScript<{ profileUrl: string; skill: string }>(async ({ profileUrl, skill }) =
 
     // Scroll to skills section
     const skillsSection = page.locator(config.selectors.skillsSection).first();
-    if (!await skillsSection.isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (!await skillsSection.isVisible({ timeout: config.timeouts.elementWait }).catch(() => false)) {
       return { success: false, message: 'Skills section not found on this profile.' };
     }
     await skillsSection.scrollIntoViewIfNeeded();
@@ -26,13 +26,13 @@ runScript<{ profileUrl: string; skill: string }>(async ({ profileUrl, skill }) =
 
     // Find the specific skill
     const skillLocator = page.locator(`span:has-text("${skill.trim()}")`).first();
-    if (!await skillLocator.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (!await skillLocator.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
       return { success: false, message: `Skill "${skill}" not found on this profile.` };
     }
 
     // Find endorse button near that skill
     const endorseBtn = page.locator(`div:has(span:has-text("${skill.trim()}")) button[aria-label*="Endorse"]`).first();
-    if (!await endorseBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (!await endorseBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
       return { success: false, message: `Endorse button for "${skill}" not found. You may have already endorsed it.` };
     }
 

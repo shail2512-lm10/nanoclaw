@@ -71,27 +71,67 @@ runScript<{
         if (!success) { errors++; console.error(`Navigate for connect failed: ${error}`); continue; }
 
         const connectBtn = page.locator(`${config.selectors.connectBtn}:visible`).first();
-        const visible = await connectBtn.isVisible({ timeout: 5000 }).catch(() => false);
+        const visible = await connectBtn.isVisible({ timeout: config.timeouts.elementWait }).catch(() => false);
         if (!visible) { skipped++; console.error(`No connect button for ${lead.name}`); continue; }
 
-        await connectBtn.click();
-        await page.waitForTimeout(config.delays.afterClick);
-
+        // LinkedIn A/B: some profiles render Connect as <a> with SVG overlay blocking clicks.
+        // Detect <a> and navigate directly to the custom-invite URL.
+        const tagName = await connectBtn.evaluate(el => el.tagName.toLowerCase());
+        const href = tagName === 'a' ? await connectBtn.getAttribute('href') : null;
         const note = connectNote?.replace('{name}', name).trim().slice(0, 300);
-        if (note) {
-          const addNoteBtn = page.locator(config.selectors.addNoteBtn).first();
-          if (await addNoteBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-            await addNoteBtn.click();
-            await page.waitForTimeout(config.delays.afterClick);
-            await page.fill(config.selectors.noteTextarea, note);
-            await page.waitForTimeout(config.delays.afterType);
-            // "Send invitation" only appears after clicking "Add a note"
-            await page.locator(config.selectors.sendNowBtn).first().click();
+
+        if (href && href.includes('/preload/custom-invite/')) {
+          const fullUrl = new URL(href, page.url()).toString();
+          await page.goto(fullUrl, { waitUntil: 'domcontentloaded' });
+          await page.waitForTimeout(config.delays.afterPageLoad);
+
+          if (note) {
+            const addNoteBtn = page.locator(config.selectors.addNoteBtn).first();
+            if (await addNoteBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
+              await addNoteBtn.click();
+              await page.waitForTimeout(config.delays.afterClick);
+              // Check if textarea appeared — may hit Premium paywall instead
+              const textarea = page.locator(config.selectors.noteTextarea).first();
+              if (await textarea.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
+                await page.fill(config.selectors.noteTextarea, note);
+                await page.waitForTimeout(config.delays.afterType);
+                await page.locator(config.selectors.sendNowBtn).first().click();
+              } else {
+                // Premium paywall — dismiss and re-navigate to send without note
+                const dismissBtn = page.locator('button[aria-label="Dismiss"]').first();
+                if (await dismissBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
+                  await dismissBtn.click();
+                  await page.waitForTimeout(1000);
+                }
+                await page.goto(fullUrl, { waitUntil: 'domcontentloaded' });
+                await page.waitForTimeout(config.delays.afterPageLoad);
+                await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
+              }
+            } else {
+              await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
+            }
           } else {
             await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
           }
         } else {
-          await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
+          // Standard <button> click path
+          await connectBtn.click();
+          await page.waitForTimeout(config.delays.afterClick);
+
+          if (note) {
+            const addNoteBtn = page.locator(config.selectors.addNoteBtn).first();
+            if (await addNoteBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
+              await addNoteBtn.click();
+              await page.waitForTimeout(config.delays.afterClick);
+              await page.fill(config.selectors.noteTextarea, note);
+              await page.waitForTimeout(config.delays.afterType);
+              await page.locator(config.selectors.sendNowBtn).first().click();
+            } else {
+              await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
+            }
+          } else {
+            await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
+          }
         }
 
         await page.waitForTimeout(config.delays.afterClick * 2);
@@ -113,12 +153,22 @@ runScript<{
         if (!success) { errors++; console.error(`Navigate for message failed: ${error}`); continue; }
 
         const msgBtn = page.locator(`${config.selectors.messageBtn}:visible`).first();
-        if (!await msgBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        if (!await msgBtn.isVisible({ timeout: config.timeouts.elementWait }).catch(() => false)) {
           skipped++; console.error(`No message button for ${lead.name} — not connected?`); continue;
         }
 
-        await msgBtn.click();
-        await page.waitForTimeout(config.delays.afterClick * 2);
+        // LinkedIn A/B: some profiles render Message as <a href="/messaging/compose/...">
+        // with an SVG overlay blocking clicks. Navigate directly when href exists.
+        const msgTagName = await msgBtn.evaluate(el => el.tagName.toLowerCase());
+        const msgHref = msgTagName === 'a' ? await msgBtn.getAttribute('href') : null;
+
+        if (msgHref && msgHref.includes('/messaging/compose')) {
+          await page.goto(new URL(msgHref, page.url()).toString(), { waitUntil: 'domcontentloaded' });
+          await page.waitForTimeout(config.delays.afterPageLoad);
+        } else {
+          await msgBtn.click();
+          await page.waitForTimeout(config.delays.afterClick * 2);
+        }
 
         const compose = page.locator(config.selectors.msgCompose).first();
         await compose.waitFor({ timeout: config.timeouts.elementWait });

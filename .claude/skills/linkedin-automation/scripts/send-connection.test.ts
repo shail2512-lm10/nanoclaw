@@ -34,7 +34,7 @@ vi.mock('../lib/browser.js', () => {
     humanType:         vi.fn(),
     config: {
       selectors: {
-        connectBtn:         'button[aria-label*="connect" i]',
+        connectBtn:         ':is(button, a)[aria-label*="connect" i]',
         addNoteBtn:         'button[aria-label="Add a note"]',
         noteTextarea:       'textarea[name="message"]',
         sendNowBtn:         'button[aria-label="Send invitation"]',
@@ -42,8 +42,8 @@ vi.mock('../lib/browser.js', () => {
         profileName:        'h1',
         messageBtn:         'button[aria-label*="Message"]',
       },
-      delays: { afterClick: 0, afterType: 0, minMs: 0, maxMs: 0 },
-      timeouts: { elementWait: 0 },
+      delays: { afterClick: 0, afterType: 0, afterPageLoad: 0, minMs: 0, maxMs: 0 },
+      timeouts: { elementWait: 0, secondaryWait: 0 },
       limits: { maxConnectionsPerDay: 25 },
     },
   };
@@ -77,6 +77,9 @@ function makeMockPage(visibleBySelector: Record<string, boolean> = {}) {
         click: vi.fn().mockImplementation(async () => { clickedSelectors.push(sel); }),
         waitFor: vi.fn().mockResolvedValue(undefined),
         textContent: vi.fn().mockResolvedValue('Test User'),
+        evaluate: vi.fn().mockResolvedValue('button'),
+        getAttribute: vi.fn().mockResolvedValue(null),
+        elementHandle: vi.fn().mockResolvedValue(null),
         first: vi.fn(),
       };
       inner.first.mockReturnValue(inner);
@@ -84,6 +87,10 @@ function makeMockPage(visibleBySelector: Record<string, boolean> = {}) {
     }),
     fill: vi.fn().mockResolvedValue(undefined),
     waitForTimeout: vi.fn().mockResolvedValue(undefined),
+    waitForURL: vi.fn().mockRejectedValue(new Error('timeout')),
+    url: vi.fn().mockReturnValue('https://www.linkedin.com/in/testuser/'),
+    goto: vi.fn().mockResolvedValue(undefined),
+    evaluate: vi.fn().mockResolvedValue([]),
     keyboard: { type: vi.fn().mockResolvedValue(undefined) },
     get clickedSelectors() { return clickedSelectors; },
   };
@@ -160,10 +167,10 @@ describe('input validation', () => {
 describe(':visible selector prevents hidden-button false-negative', () => {
   it('proceeds when connectBtn:visible is visible even though the bare (hidden) selector is not', async () => {
     // Simulates LinkedIn hidden-duplicate DOM:
-    //   'button[aria-label*="connect" i]'        → isVisible=false (hidden duplicate)
-    //   'button[aria-label*="connect" i]:visible' → isVisible=true  (real button)
+    //   ':is(button, a)[aria-label*="connect" i]'        → isVisible=false (hidden duplicate)
+    //   ':is(button, a)[aria-label*="connect" i]:visible' → isVisible=true  (real button)
     const page = makeMockPage({
-      'button[aria-label*="connect" i]:visible': true,
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
       'button[aria-label="Send without a note"]': true,
     });
     state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
@@ -172,14 +179,14 @@ describe(':visible selector prevents hidden-button false-negative', () => {
 
     expect(result.success).toBe(true);
     // The `:visible` version was clicked
-    expect(page.clickedSelectors).toContain('button[aria-label*="connect" i]:visible');
+    expect(page.clickedSelectors).toContain(':is(button, a)[aria-label*="connect" i]:visible');
   });
 
   it('returns failure when connectBtn:visible is not visible and more-actions also absent', async () => {
     // Both the :visible connect button and the more-actions fallback are absent.
     // This verifies the script does NOT silently proceed with a hidden button.
     const page = makeMockPage({
-      // 'button[aria-label*="connect" i]:visible' is absent → defaults to false
+      // ':is(button, a)[aria-label*="connect" i]:visible' is absent → defaults to false
       'button:visible[aria-label*="More actions"]': false,
     });
     state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
@@ -204,7 +211,7 @@ describe(':visible selector prevents hidden-button false-negative', () => {
 describe('connect modal — no-note path', () => {
   it('clicks sendWithoutNoteBtn and never touches sendNowBtn when note is absent', async () => {
     const page = makeMockPage({
-      'button[aria-label*="connect" i]:visible': true,
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
       'button[aria-label="Send without a note"]': true,
     });
     state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
@@ -219,7 +226,7 @@ describe('connect modal — no-note path', () => {
 
   it('treats empty-string note as no-note — clicks sendWithoutNoteBtn only', async () => {
     const page = makeMockPage({
-      'button[aria-label*="connect" i]:visible': true,
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
       'button[aria-label="Send without a note"]': true,
     });
     state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
@@ -241,7 +248,7 @@ describe('connect modal — no-note path', () => {
 describe('connect modal — note path', () => {
   it('clicks addNoteBtn → fills textarea → clicks sendNowBtn when note provided', async () => {
     const page = makeMockPage({
-      'button[aria-label*="connect" i]:visible': true,
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
       'button[aria-label="Add a note"]': true,
       'button[aria-label="Send invitation"]': true,
     });
@@ -262,7 +269,7 @@ describe('connect modal — note path', () => {
   it('truncates note to 300 characters before filling', async () => {
     const longNote = 'x'.repeat(400);
     const page = makeMockPage({
-      'button[aria-label*="connect" i]:visible': true,
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
       'button[aria-label="Add a note"]': true,
       'button[aria-label="Send invitation"]': true,
     });
@@ -277,7 +284,7 @@ describe('connect modal — note path', () => {
   it('falls back to sendWithoutNoteBtn when addNoteBtn is not available', async () => {
     // Some LinkedIn accounts/profiles don't show "Add a note" (e.g. premium restriction)
     const page = makeMockPage({
-      'button[aria-label*="connect" i]:visible': true,
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
       // 'button[aria-label="Add a note"]' is absent → defaults to false
       'button[aria-label="Send without a note"]': true,
     });
@@ -289,6 +296,110 @@ describe('connect modal — note path', () => {
     expect(page.clickedSelectors).toContain('button[aria-label="Send without a note"]');
     // "Send invitation" must NOT be called — it requires "Add a note" to be clicked first
     expect(page.clickedSelectors).not.toContain('button[aria-label="Send invitation"]');
+  });
+});
+
+// ── <a> href custom-invite path (SVG overlay workaround) ────────────────
+//
+// LinkedIn A/B: some profiles render Connect as <a href="/preload/custom-invite/...">
+// with an SVG overlay div blocking Playwright pointer clicks. The script detects
+// <a> tags, extracts the href, and navigates directly via page.goto().
+
+describe('<a> href custom-invite path', () => {
+  /** Build a page where the connect button is an <a> with a custom-invite href. */
+  function makeMockPageWithAnchor(visibleBySelector: Record<string, boolean> = {}) {
+    const clickedSelectors: string[] = [];
+    return {
+      locator: vi.fn().mockImplementation((sel: string) => {
+        const visible = visibleBySelector[sel] ?? false;
+        const inner = {
+          isVisible: vi.fn().mockResolvedValue(visible),
+          click: vi.fn().mockImplementation(async () => { clickedSelectors.push(sel); }),
+          waitFor: vi.fn().mockResolvedValue(undefined),
+          textContent: vi.fn().mockResolvedValue('Test User'),
+          // Return 'a' for tagName and a custom-invite href
+          evaluate: vi.fn().mockResolvedValue('a'),
+          getAttribute: vi.fn().mockResolvedValue('/preload/custom-invite/?vanityName=testuser'),
+          elementHandle: vi.fn().mockResolvedValue(null),
+          first: vi.fn(),
+        };
+        inner.first.mockReturnValue(inner);
+        return inner;
+      }),
+      fill: vi.fn().mockResolvedValue(undefined),
+      waitForTimeout: vi.fn().mockResolvedValue(undefined),
+      waitForURL: vi.fn().mockRejectedValue(new Error('timeout')),
+      url: vi.fn().mockReturnValue('https://www.linkedin.com/in/testuser/'),
+      goto: vi.fn().mockResolvedValue(undefined),
+      evaluate: vi.fn().mockResolvedValue([]),
+      keyboard: { type: vi.fn().mockResolvedValue(undefined) },
+      get clickedSelectors() { return clickedSelectors; },
+    };
+  }
+
+  it('navigates to custom-invite URL and clicks sendWithoutNoteBtn when no note', async () => {
+    const page = makeMockPageWithAnchor({
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
+      'button[aria-label="Send without a note"]': true,
+    });
+    state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
+
+    const result = await runConnect({ profileUrl: PROFILE_URL });
+
+    expect(result.success).toBe(true);
+    expect(page.goto).toHaveBeenCalledWith(
+      expect.stringContaining('/preload/custom-invite/'),
+      expect.any(Object),
+    );
+    expect(page.clickedSelectors).toContain('button[aria-label="Send without a note"]');
+    // The connect button itself should NOT be clicked (SVG overlay bypass)
+    expect(page.clickedSelectors).not.toContain(':is(button, a)[aria-label*="connect" i]:visible');
+  });
+
+  it('navigates to custom-invite URL and fills note when textarea is available', async () => {
+    const page = makeMockPageWithAnchor({
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
+      'button[aria-label="Add a note"]': true,
+      'textarea[name="message"]': true,
+      'button[aria-label="Send invitation"]': true,
+    });
+    state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
+
+    const result = await runConnect({ profileUrl: PROFILE_URL, note: 'Hello!' });
+
+    expect(result.success).toBe(true);
+    expect(page.goto).toHaveBeenCalledWith(
+      expect.stringContaining('/preload/custom-invite/'),
+      expect.any(Object),
+    );
+    expect(page.clickedSelectors).toContain('button[aria-label="Add a note"]');
+    expect(page.fill).toHaveBeenCalledWith('textarea[name="message"]', 'Hello!');
+    expect(page.clickedSelectors).toContain('button[aria-label="Send invitation"]');
+  });
+
+  it('falls back to sendWithoutNoteBtn when Premium paywall blocks textarea', async () => {
+    // After clicking "Add a note", textarea does NOT appear (Premium paywall).
+    // Dismiss button appears instead.
+    const page = makeMockPageWithAnchor({
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
+      'button[aria-label="Add a note"]': true,
+      // 'textarea[name="message"]' is absent → defaults to false (Premium paywall)
+      'button[aria-label="Dismiss"]': true,
+      'button[aria-label="Send without a note"]': true,
+    });
+    state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
+
+    const result = await runConnect({ profileUrl: PROFILE_URL, note: 'Hello!' });
+
+    expect(result.success).toBe(true);
+    // Dismiss was clicked to close the paywall
+    expect(page.clickedSelectors).toContain('button[aria-label="Dismiss"]');
+    // Re-navigated to custom-invite after dismissing
+    expect(page.goto).toHaveBeenCalledTimes(2);
+    // Fell back to sending without note
+    expect(page.clickedSelectors).toContain('button[aria-label="Send without a note"]');
+    // Message should mention Premium
+    expect(result.message).toMatch(/premium/i);
   });
 });
 
@@ -330,7 +441,7 @@ describe('more-actions menu fallback', () => {
 describe('post-send state', () => {
   it('calls incrementCount("connections") on success', async () => {
     const page = makeMockPage({
-      'button[aria-label*="connect" i]:visible': true,
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
       'button[aria-label="Send without a note"]': true,
     });
     state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
@@ -342,7 +453,7 @@ describe('post-send state', () => {
 
   it('calls updateLeadStatus with "Requested" on success', async () => {
     const page = makeMockPage({
-      'button[aria-label*="connect" i]:visible': true,
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
       'button[aria-label="Send without a note"]': true,
     });
     state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
@@ -370,7 +481,7 @@ describe('browser context cleanup', () => {
     const ctx = makeMockContext();
     state.getBrowserContextMock!.mockResolvedValue(ctx);
     const page = makeMockPage({
-      'button[aria-label*="connect" i]:visible': true,
+      ':is(button, a)[aria-label*="connect" i]:visible': true,
       'button[aria-label="Send without a note"]': true,
     });
     state.navigateToProfileMock!.mockResolvedValue({ page, success: true });

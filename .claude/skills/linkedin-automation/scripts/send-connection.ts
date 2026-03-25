@@ -11,7 +11,12 @@ import {
 } from '../lib/browser.js';
 import { updateLeadStatus } from '../lib/notion.js';
 
+/** Tracks whether LinkedIn blocked the note with a Premium paywall. */
+let premiumPaywallHit = false;
+
 runScript<{ profileUrl: string; note?: string }>(async ({ profileUrl, note }) => {
+  premiumPaywallHit = false;
+
   if (!profileUrl) return { success: false, message: 'profileUrl is required' };
 
   if (!checkLimit('connections', 'maxConnectionsPerDay')) {
@@ -26,16 +31,16 @@ runScript<{ profileUrl: string; note?: string }>(async ({ profileUrl, note }) =>
 
     // Click Connect button — use :visible to skip hidden DOM duplicates
     const connectBtn = page.locator(`${config.selectors.connectBtn}:visible`).first();
-    const isVisible = await connectBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    const isVisible = await connectBtn.isVisible({ timeout: config.timeouts.elementWait }).catch(() => false);
 
     if (!isVisible) {
       // May be inside the "More" menu
       const moreBtn = page.locator('button:visible[aria-label*="More actions"]').first();
-      if (await moreBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await moreBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
         await moreBtn.click();
         await page.waitForTimeout(config.delays.afterClick);
         const menuConnect = page.locator('div[aria-label*="connect" i]').first();
-        if (await menuConnect.isVisible({ timeout: 3000 }).catch(() => false)) {
+        if (await menuConnect.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
           await menuConnect.click();
         } else {
           return { success: false, message: 'Connect button not found. May already be connected or restricted.' };
@@ -44,27 +49,26 @@ runScript<{ profileUrl: string; note?: string }>(async ({ profileUrl, note }) =>
         return { success: false, message: 'Connect button not found. Already connected or profile is restricted.' };
       }
     } else {
-      await connectBtn.click();
-    }
+      // LinkedIn A/B tests: some profiles use <a> with href="/preload/custom-invite/..."
+      // instead of <button>. An SVG overlay blocks Playwright pointer clicks on these <a>
+      // elements. When the button is an <a> with an href, navigate directly to the
+      // custom-invite URL instead of trying to click through the overlay.
+      const tagName = await connectBtn.evaluate(el => el.tagName.toLowerCase());
+      const href = tagName === 'a' ? await connectBtn.getAttribute('href') : null;
 
-    await page.waitForTimeout(config.delays.afterClick);
+      if (href && href.includes('/preload/custom-invite/')) {
+        // Navigate directly to the custom-invite page (bypasses SVG overlay)
+        const fullUrl = new URL(href, page.url()).toString();
+        await page.goto(fullUrl, { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(config.delays.afterPageLoad);
 
-    if (note && note.trim()) {
-      // Add personalized note
-      const addNoteBtn = page.locator(config.selectors.addNoteBtn).first();
-      if (await addNoteBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await addNoteBtn.click();
-        await page.waitForTimeout(config.delays.afterClick);
-        await page.fill(config.selectors.noteTextarea, note.trim().slice(0, 300));
-        await page.waitForTimeout(config.delays.afterType);
-        // "Send invitation" only appears after clicking "Add a note"
-        await page.locator(config.selectors.sendNowBtn).first().click();
+        await handleCustomInvitePage(page, fullUrl, note);
       } else {
-        // "Add a note" unavailable — send without note
-        await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
+        // Standard <button> click — works for the majority of profiles
+        await connectBtn.click();
+        await page.waitForTimeout(config.delays.afterClick);
+        await handleConnectModal(page, note);
       }
-    } else {
-      await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
     }
 
     await page.waitForTimeout(config.delays.afterClick * 2);
@@ -77,11 +81,71 @@ runScript<{ profileUrl: string; note?: string }>(async ({ profileUrl, note }) =>
     } catch {}
 
     const profileName = await page.locator(config.selectors.profileName).first().textContent().catch(() => '') ?? '';
+    const noteSent = note && !premiumPaywallHit;
     return {
       success: true,
-      message: `Connection request sent to ${profileName.trim() || profileUrl}${note ? ' with a personalized note' : ''}`,
+      message: `Connection request sent to ${profileName.trim() || profileUrl}${noteSent ? ' with a personalized note' : ''}${premiumPaywallHit ? ' (note skipped — Premium required for custom notes)' : ''}`,
     };
   } finally {
     await context.close();
   }
 });
+
+/**
+ * Handle the custom-invite page (/preload/custom-invite/...).
+ * This is a standalone page (not a modal) with different DOM than the standard
+ * connect modal. LinkedIn's free tier limits custom notes — clicking "Add a note"
+ * may trigger a Premium paywall instead of showing a textarea.
+ */
+async function handleCustomInvitePage(page: import('playwright').Page, inviteUrl: string, note?: string) {
+  if (note && note.trim()) {
+    const addNoteBtn = page.locator(config.selectors.addNoteBtn).first();
+    if (await addNoteBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
+      await addNoteBtn.click();
+      await page.waitForTimeout(config.delays.afterClick);
+
+      // Check if textarea appeared — LinkedIn may show a Premium paywall instead
+      const textarea = page.locator(config.selectors.noteTextarea).first();
+      if (await textarea.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
+        // Textarea available — fill note and send
+        await page.fill(config.selectors.noteTextarea, note.trim().slice(0, 300));
+        await page.waitForTimeout(config.delays.afterType);
+        await page.locator(config.selectors.sendNowBtn).first().click();
+        return;
+      }
+
+      // Premium paywall hit — dismiss it and re-navigate to send without note
+      premiumPaywallHit = true;
+      const dismissBtn = page.locator('button[aria-label="Dismiss"]').first();
+      if (await dismissBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
+        await dismissBtn.click();
+        await page.waitForTimeout(1000);
+      }
+      // Re-navigate — dismissing the paywall destroys the invite UI
+      await page.goto(inviteUrl, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(config.delays.afterPageLoad);
+    }
+  }
+
+  // Send without a note (either no note requested, or Premium paywall fallback)
+  const sendBtn = page.locator(config.selectors.sendWithoutNoteBtn).first();
+  await sendBtn.click({ timeout: config.timeouts.elementWait });
+}
+
+/** Handle the standard connect modal (appears after clicking a <button> Connect). */
+async function handleConnectModal(page: import('playwright').Page, note?: string) {
+  if (note && note.trim()) {
+    const addNoteBtn = page.locator(config.selectors.addNoteBtn).first();
+    if (await addNoteBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
+      await addNoteBtn.click();
+      await page.waitForTimeout(config.delays.afterClick);
+      await page.fill(config.selectors.noteTextarea, note.trim().slice(0, 300));
+      await page.waitForTimeout(config.delays.afterType);
+      await page.locator(config.selectors.sendNowBtn).first().click();
+    } else {
+      await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
+    }
+  } else {
+    await page.locator(config.selectors.sendWithoutNoteBtn).first().click();
+  }
+}

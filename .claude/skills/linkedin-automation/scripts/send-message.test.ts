@@ -34,14 +34,14 @@ vi.mock('../lib/browser.js', () => {
     humanType:         vi.fn(),
     config: {
       selectors: {
-        messageBtn:  'button[aria-label*="Message"]',
+        messageBtn:  ':is(button[aria-label*="Message"], a[href*="messaging/compose"])',
         msgCompose:  'div.msg-form__contenteditable',
         msgSendBtn:  'button.msg-form__send-button',
         profileName: 'h1',
         connectBtn:  'button[aria-label*="connect" i]',
       },
-      delays: { afterClick: 0, afterType: 0, minMs: 0, maxMs: 0 },
-      timeouts: { elementWait: 0 },
+      delays: { afterClick: 0, afterType: 0, afterPageLoad: 0, minMs: 0, maxMs: 0 },
+      timeouts: { elementWait: 0, secondaryWait: 0 },
       limits: { maxMessagesPerDay: 40 },
     },
   };
@@ -75,6 +75,8 @@ function makeMockPage(visibleBySelector: Record<string, boolean> = {}) {
         click: vi.fn().mockImplementation(async () => { clickedSelectors.push(sel); }),
         waitFor: vi.fn().mockResolvedValue(undefined),
         textContent: vi.fn().mockResolvedValue('Test User'),
+        evaluate: vi.fn().mockResolvedValue('button'),
+        getAttribute: vi.fn().mockResolvedValue(null),
         first: vi.fn(),
       };
       inner.first.mockReturnValue(inner);
@@ -82,6 +84,8 @@ function makeMockPage(visibleBySelector: Record<string, boolean> = {}) {
     }),
     fill: vi.fn().mockResolvedValue(undefined),
     waitForTimeout: vi.fn().mockResolvedValue(undefined),
+    url: vi.fn().mockReturnValue('https://www.linkedin.com/in/testuser/'),
+    goto: vi.fn().mockResolvedValue(undefined),
     keyboard: { type: vi.fn().mockResolvedValue(undefined) },
     get clickedSelectors() { return clickedSelectors; },
   };
@@ -161,10 +165,10 @@ describe('input validation', () => {
 describe(':visible selector prevents hidden-button false-negative', () => {
   it('proceeds when messageBtn:visible is visible even though the bare selector is not', async () => {
     // Simulates LinkedIn hidden-duplicate DOM:
-    //   'button[aria-label*="Message"]'         → isVisible=false (hidden duplicate)
-    //   'button[aria-label*="Message"]:visible'  → isVisible=true  (real button)
+    //   ':is(button[aria-label*="Message"], a[href*="messaging/compose"])'         → isVisible=false (hidden duplicate)
+    //   ':is(button[aria-label*="Message"], a[href*="messaging/compose"]):visible'  → isVisible=true  (real button)
     const page = makeMockPage({
-      'button[aria-label*="Message"]:visible': true,
+      ':is(button[aria-label*="Message"], a[href*="messaging/compose"]):visible': true,
       'div.msg-form__contenteditable': true,
       'button.msg-form__send-button': true,
     });
@@ -174,13 +178,13 @@ describe(':visible selector prevents hidden-button false-negative', () => {
 
     expect(result.success).toBe(true);
     // The :visible button was clicked
-    expect(page.clickedSelectors).toContain('button[aria-label*="Message"]:visible');
+    expect(page.clickedSelectors).toContain(':is(button[aria-label*="Message"], a[href*="messaging/compose"]):visible');
   });
 
   it('returns failure with clear message when messageBtn:visible is not visible', async () => {
     // No visible Message button — not a 1st-degree connection or wrong profile state
     const page = makeMockPage({
-      // 'button[aria-label*="Message"]:visible' is absent → defaults to false
+      // ':is(button[aria-label*="Message"], a[href*="messaging/compose"]):visible' is absent → defaults to false
     });
     state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
 
@@ -193,12 +197,62 @@ describe(':visible selector prevents hidden-button false-negative', () => {
   });
 });
 
+// ── <a> href messaging/compose path (SVG overlay workaround) ────────────
+//
+// LinkedIn A/B: some profiles render Message as <a href="/messaging/compose/...">
+// with an SVG overlay div blocking Playwright pointer clicks. The script detects
+// <a> tags, extracts the href, and navigates directly via page.goto().
+
+describe('<a> href messaging/compose path', () => {
+  it('navigates to messaging/compose URL instead of clicking when button is <a>', async () => {
+    const clickedSelectors: string[] = [];
+    const page = {
+      locator: vi.fn().mockImplementation((sel: string) => {
+        const visMap: Record<string, boolean> = {
+          ':is(button[aria-label*="Message"], a[href*="messaging/compose"]):visible': true,
+          'div.msg-form__contenteditable': true,
+          'button.msg-form__send-button': true,
+        };
+        const visible = visMap[sel] ?? false;
+        const inner = {
+          isVisible: vi.fn().mockResolvedValue(visible),
+          click: vi.fn().mockImplementation(async () => { clickedSelectors.push(sel); }),
+          waitFor: vi.fn().mockResolvedValue(undefined),
+          textContent: vi.fn().mockResolvedValue('Test User'),
+          // Return 'a' for tagName and a messaging/compose href
+          evaluate: vi.fn().mockResolvedValue('a'),
+          getAttribute: vi.fn().mockResolvedValue('/messaging/compose/?profileUrn=urn%3Ali%3Afsd_profile%3AAAA'),
+          first: vi.fn(),
+        };
+        inner.first.mockReturnValue(inner);
+        return inner;
+      }),
+      fill: vi.fn().mockResolvedValue(undefined),
+      waitForTimeout: vi.fn().mockResolvedValue(undefined),
+      url: vi.fn().mockReturnValue('https://www.linkedin.com/in/testuser/'),
+      goto: vi.fn().mockResolvedValue(undefined),
+      keyboard: { type: vi.fn().mockResolvedValue(undefined) },
+    };
+    state.navigateToProfileMock!.mockResolvedValue({ page, success: true });
+
+    const result = await runMessage({ profileUrl: PROFILE_URL, message: 'hello' });
+
+    expect(result.success).toBe(true);
+    expect(page.goto).toHaveBeenCalledWith(
+      expect.stringContaining('/messaging/compose/'),
+      expect.any(Object),
+    );
+    // The message button itself should NOT be clicked (SVG overlay bypass)
+    expect(clickedSelectors).not.toContain(':is(button[aria-label*="Message"], a[href*="messaging/compose"]):visible');
+  });
+});
+
 // ── Message flow ───────────────────────────────────────────────────────────
 
 describe('message flow', () => {
   it('types the message character by character and clicks msgSendBtn', async () => {
     const page = makeMockPage({
-      'button[aria-label*="Message"]:visible': true,
+      ':is(button[aria-label*="Message"], a[href*="messaging/compose"]):visible': true,
       'div.msg-form__contenteditable': true,
       'button.msg-form__send-button': true,
     });
@@ -213,7 +267,7 @@ describe('message flow', () => {
 
   it('calls incrementCount("messages") on success', async () => {
     const page = makeMockPage({
-      'button[aria-label*="Message"]:visible': true,
+      ':is(button[aria-label*="Message"], a[href*="messaging/compose"]):visible': true,
       'div.msg-form__contenteditable': true,
       'button.msg-form__send-button': true,
     });
@@ -226,7 +280,7 @@ describe('message flow', () => {
 
   it('calls updateLeadStatus with "Messaged" and message text on success', async () => {
     const page = makeMockPage({
-      'button[aria-label*="Message"]:visible': true,
+      ':is(button[aria-label*="Message"], a[href*="messaging/compose"]):visible': true,
       'div.msg-form__contenteditable': true,
       'button.msg-form__send-button': true,
     });
@@ -259,7 +313,7 @@ describe('browser context cleanup', () => {
     const ctx = makeMockContext();
     state.getBrowserContextMock!.mockResolvedValue(ctx);
     const page = makeMockPage({
-      'button[aria-label*="Message"]:visible': true,
+      ':is(button[aria-label*="Message"], a[href*="messaging/compose"]):visible': true,
       'div.msg-form__contenteditable': true,
       'button.msg-form__send-button': true,
     });

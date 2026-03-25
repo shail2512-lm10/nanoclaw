@@ -49,14 +49,24 @@ runScript<{ messageText: string; campaign?: string; maxMessages?: number }>(
         if (!success) { errors++; console.error(`Navigate failed for ${lead.name}: ${error}`); continue; }
 
         const msgBtn = page.locator(`${config.selectors.messageBtn}:visible`).first();
-        if (!await msgBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        if (!await msgBtn.isVisible({ timeout: config.timeouts.elementWait }).catch(() => false)) {
           skipped++;
           console.error(`No message button for ${lead.name}`);
           continue;
         }
 
-        await msgBtn.click();
-        await page.waitForTimeout(config.delays.afterClick * 2);
+        // LinkedIn A/B: some profiles render Message as <a href="/messaging/compose/...">
+        // with an SVG overlay blocking clicks. Navigate directly when href exists.
+        const msgTagName = await msgBtn.evaluate(el => el.tagName.toLowerCase());
+        const msgHref = msgTagName === 'a' ? await msgBtn.getAttribute('href') : null;
+
+        if (msgHref && msgHref.includes('/messaging/compose')) {
+          await page.goto(new URL(msgHref, page.url()).toString(), { waitUntil: 'domcontentloaded' });
+          await page.waitForTimeout(config.delays.afterPageLoad);
+        } else {
+          await msgBtn.click();
+          await page.waitForTimeout(config.delays.afterClick * 2);
+        }
 
         const compose = page.locator(config.selectors.msgCompose).first();
         await compose.waitFor({ timeout: config.timeouts.elementWait });

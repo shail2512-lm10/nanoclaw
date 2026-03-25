@@ -49,7 +49,7 @@ runScript<{ postUrl: string; reaction: string }>(async ({ postUrl, reaction }) =
 
     // Click the specific reaction
     const reactionBtn = page.locator(`button[aria-label="${reactionLabel}"]`).first();
-    const reactionVisible = await reactionBtn.isVisible({ timeout: 3000 }).catch(() => false);
+    const reactionVisible = await reactionBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false);
 
     if (!reactionVisible) {
       // Fallback: just click Like

@@ -41,9 +41,10 @@ export const config = {
 
   // Timeouts (ms)
   timeouts: {
-    navigation:  30000,
-    elementWait: 8000,
-    scriptMax:   180000,
+    navigation:    30000,
+    elementWait:   8000,
+    secondaryWait: 5000,   // fallback menus, confirm dialogs, optional elements
+    scriptMax:     180000,
   },
 
   // Notion
@@ -64,11 +65,11 @@ export const config = {
   // LinkedIn selectors (update if LinkedIn redesigns their UI)
   selectors: {
     // Profile page
-    connectBtn:        'button[aria-label*="connect" i]',
-    followBtn:         'button[aria-label*="Follow"]',
-    unfollowBtn:       'button[aria-label*="Unfollow"], button[aria-label*="Following"]',
-    messageBtn:        'button[aria-label*="Message"]',
-    pendingBtn:        'button[aria-label*="Pending"], button[aria-label*="Withdraw"]',
+    connectBtn:        ':is(button, a)[aria-label*="connect" i]',
+    followBtn:         ':is(button, a)[aria-label*="Follow"]',
+    unfollowBtn:       ':is(button, a)[aria-label*="Unfollow"], :is(button, a)[aria-label*="Following"]',
+    messageBtn:        ':is(button[aria-label*="Message"], a[href*="messaging/compose"])',
+    pendingBtn:        ':is(button, a)[aria-label*="Pending"], :is(button, a)[aria-label*="Withdraw"]',
     profileName:       'h1',
     profileHeadline:   'div.text-body-medium',
     profileLocation:   'span.text-body-small.inline.t-black--light',

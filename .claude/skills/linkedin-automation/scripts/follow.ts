@@ -24,15 +24,15 @@ runScript<{ profileUrl: string }>(async ({ profileUrl }) => {
     if (!success) return { success: false, message: error || 'Navigation failed' };
 
     const followBtn = page.locator(`${config.selectors.followBtn}:visible`).first();
-    const isVisible = await followBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    const isVisible = await followBtn.isVisible({ timeout: config.timeouts.elementWait }).catch(() => false);
     if (!isVisible) {
       // Try "More" menu
       const moreBtn = page.locator('button:visible[aria-label*="More actions"]').first();
-      if (await moreBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await moreBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
         await moreBtn.click();
         await page.waitForTimeout(config.delays.afterClick);
         const menuFollow = page.locator('div[aria-label*="follow" i]').first();
-        if (await menuFollow.isVisible({ timeout: 3000 }).catch(() => false)) {
+        if (await menuFollow.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
           await menuFollow.click();
         } else {
           return { success: false, message: 'Follow option not found in menu.' };
@@ -41,7 +41,16 @@ runScript<{ profileUrl: string }>(async ({ profileUrl }) => {
         return { success: false, message: 'Follow button not found. May already be following.' };
       }
     } else {
-      await followBtn.click();
+      // LinkedIn A/B: some profiles render Follow as <a> with SVG overlay blocking clicks.
+      const tagName = await followBtn.evaluate(el => el.tagName.toLowerCase());
+      const href = tagName === 'a' ? await followBtn.getAttribute('href') : null;
+
+      if (href) {
+        await page.goto(new URL(href, page.url()).toString(), { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(config.delays.afterPageLoad);
+      } else {
+        await followBtn.click();
+      }
     }
 
     await page.waitForTimeout(config.delays.afterClick * 2);

@@ -24,7 +24,7 @@ runScript<{ postUrl: string; commentary?: string }>(async ({ postUrl, commentary
     if (commentary?.trim()) {
       // Choose "Repost with your thoughts" option
       const withThoughts = page.locator('button:has-text("Repost with your thoughts"), div:has-text("Add thoughts")').first();
-      if (await withThoughts.isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await withThoughts.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
         await withThoughts.click();
         await page.waitForTimeout(config.delays.afterClick);
 
@@ -44,7 +44,7 @@ runScript<{ postUrl: string; commentary?: string }>(async ({ postUrl, commentary
     } else {
       // Direct repost without commentary
       const repostBtn = page.locator('button:has-text("Repost")').first();
-      if (await repostBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await repostBtn.isVisible({ timeout: config.timeouts.secondaryWait }).catch(() => false)) {
         await repostBtn.click();
       }
     }

@@ -28,7 +28,7 @@ runScript<{ postUrl: string; maxLeads?: number; campaign?: string; type?: 'react
       if (type === 'reactions') {
         // Click on the reactions count to open the list
         const reactionsCount = page.locator('button[aria-label*="reaction"], span.social-counts-reactions__count').first();
-        if (!await reactionsCount.isVisible({ timeout: 5000 }).catch(() => false)) {
+        if (!await reactionsCount.isVisible({ timeout: config.timeouts.elementWait }).catch(() => false)) {
           return { success: false, message: 'Reactions count not found on this post.' };
         }
 

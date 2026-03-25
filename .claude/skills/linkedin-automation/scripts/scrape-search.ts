@@ -46,7 +46,7 @@ runScript<{ query: string; maxLeads?: number; campaign?: string; connectionsOnly
       let results = await page.locator(activeResultSelector).all();
       if (results.length === 0) {
         for (const sel of RESULT_SELECTORS) {
-          await page.waitForSelector(sel, { timeout: 4000 }).catch(() => null);
+          await page.waitForSelector(sel, { timeout: config.timeouts.secondaryWait }).catch(() => null);
           results = await page.locator(sel).all();
           if (results.length > 0) { activeResultSelector = sel; break; }
         }
@@ -103,7 +103,7 @@ runScript<{ query: string; maxLeads?: number; campaign?: string; connectionsOnly
 
       // Go to next page
       const nextBtn = page.locator(config.selectors.nextPageBtn).first();
-      const hasNext = await nextBtn.isEnabled({ timeout: 3000 }).catch(() => false);
+      const hasNext = await nextBtn.isEnabled({ timeout: config.timeouts.secondaryWait }).catch(() => false);
       if (!hasNext) break;
 
       await nextBtn.click();

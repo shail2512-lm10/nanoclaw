@@ -25,7 +25,7 @@ runScript<{ postUrl: string }>(async ({ postUrl }) => {
 
     // Find Like button (not already liked)
     const likeBtn = page.locator('button[aria-label*="Like"][aria-pressed="false"]').first();
-    const isVisible = await likeBtn.isVisible({ timeout: 8000 }).catch(() => false);
+    const isVisible = await likeBtn.isVisible({ timeout: config.timeouts.elementWait }).catch(() => false);
     if (!isVisible) {
       const alreadyLiked = await page.locator('button[aria-label*="Like"][aria-pressed="true"]').first().isVisible().catch(() => false);
       if (alreadyLiked) return { success: false, message: 'Post is already liked.' };
